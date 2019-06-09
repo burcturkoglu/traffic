@@ -269,6 +269,7 @@ class Impala(object):
         callsign: Union[None, str, Iterable[str]] = None,
         icao24: Union[None, str, Iterable[str]] = None,
         serials: Union[None, str, Iterable[str]] = None,
+        airport: Union[Airport, str],
         bounds: Union[
             BaseGeometry, Tuple[float, float, float, float], None
         ] = None,
@@ -337,6 +338,22 @@ class Impala(object):
             callsign = ",".join("'{:<8s}'".format(c) for c in callsign)
             other_params += "and callsign in ({}) ".format(callsign)
 
+        if isinstance(airport, str):
+            from traffic.data import airports
+
+            airport = cast(Airport, airports[airport])
+
+        other_params += (
+            "and lat<={airport_latmax} and lat>={airport_latmin} "
+            "and lon<={airport_lonmax} and lon>={airport_lonmin} "
+            "and baroaltitude<=1000 "
+        ).format(
+            airport_latmax=airport.latitude + 0.1,
+            airport_latmin=airport.latitude - 0.1,
+            airport_lonmax=airport.longitude + 0.1,
+            airport_lonmin=airport.longitude - 0.1,
+        )
+
         if bounds is not None:
             try:
                 # thinking of shapely bounds attribute (in this order)
@@ -390,13 +407,15 @@ class Impala(object):
 
         df = pd.concat(cumul, sort=True).sort_values("timestamp")
 
-        if count is True:
-            df = df.assign(count=lambda df: df["count"].astype(int))
-
-        if return_flight:
-            return Flight(df)
-
-        return Traffic(df)
+        return df
+        #
+        # if count is True:
+        #     df = df.assign(count=lambda df: df["count"].astype(int))
+        #
+        # if return_flight:
+        #     return Flight(df)
+        #
+        # return Traffic(df)
 
     def extended(
         self,
