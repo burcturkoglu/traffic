@@ -21,7 +21,7 @@ setup(
     version="1.2.1b0",
     author="Xavier Olive",
     author_email="git@xoolive.org",
-    url="https://github.com/xoolive/traffic/",
+    url="https://github.com/burcturkoglu/traffic/",
     license="MIT",
     description="A toolbox for manipulating and analysing air traffic data",
     long_description=long_description,
