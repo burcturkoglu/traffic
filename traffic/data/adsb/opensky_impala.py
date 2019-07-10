@@ -525,7 +525,7 @@ class Impala(object):
 
         cumul = []
         sequence = list(split_times(start, stop, date_delta))
-        columns = "DISTINCT icao24".join(self._impala_columns)
+        columns = "DISTINCT icao24"
         parse_columns = ", ".join(self._impala_columns)
 
         if count is True:
