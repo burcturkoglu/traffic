@@ -43,10 +43,39 @@ class Impala(object):
         "hour",
     ]
 
+    _flights_columns = [
+        "icao24",
+        "firstseen",
+        "estdepartureairport",
+        "lastseen",
+        "estarrivalairport",
+        "callsign",
+        "estdepartureairporthorizdistance",
+        "estdepartureairportvertdistance",
+        "estarrivalairporthorizdistance",
+        "estarrivalairportvertdistance",
+        "departureairportcandidatescount",
+        "arrivalairportcandidatescount",
+        "day"
+    ]
+
     basic_request = (
         "select {columns} from state_vectors_data4 {other_tables} "
         "where hour>={before_hour} and hour<{after_hour} "
         "and time>={before_time} and time<{after_time} "
+        "{other_params}"
+    )
+
+    flight_request = (
+        "select {columns} from flights_data4 {other_tables} "
+        "where hour>={before_hour} and hour<{after_hour} "
+        "and time>={before_time} and time<{after_time} "
+        "{other_params}"
+    )
+
+    icao_request = (
+        "select {columns} from state_vectors_data4 {other_tables} "
+        "where time>={before_time} and time<{after_time} "
         "{other_params}"
     )
 
@@ -526,7 +555,7 @@ class Impala(object):
         cumul = []
         sequence = list(split_times(start, stop, date_delta))
         columns = "DISTINCT icao24"
-        parse_columns = ", ".join(self._impala_columns)
+        parse_columns = "DISTINCT icao24"
 
         if count is True:
             other_params += "group by " + columns
@@ -534,36 +563,27 @@ class Impala(object):
             parse_columns = "count, " + parse_columns
             other_tables += ", state_vectors_data4.serials s"
 
-        for bt, at, bh, ah in progressbar(sequence):
 
-            logging.info(
-                f"Sending request between time {bt} and {at} "
-                f"and hour {bh} and {ah}"
-            )
 
-            request = self.basic_request.format(
-                columns=columns,
-                before_time=bt.timestamp(),
-                after_time=at.timestamp(),
-                before_hour=bh.timestamp(),
-                after_hour=ah.timestamp(),
-                other_tables=other_tables,
-                other_params=other_params,
-            )
+        request = self.icao_request.format(
+            columns=columns,
+            before_time=start.timestamp(),
+            after_time=stop.timestamp(),
+            other_tables=other_tables,
+            other_params=other_params,
+        )
 
-            df = self._impala(request, columns=parse_columns, cached=cached)
+        df = self._impala(request, columns=parse_columns, cached=cached)
 
-            if df is None:
-                continue
 
-            df = self._format_history(df)
-            df = self._format_dataframe(df)
-            cumul.append(df)
+            #df = self._format_history(df)
+            #df = self._format_dataframe(df)
+            #cumul.append(df)
 
-        if len(cumul) == 0:
-            return None
+        #if len(cumul) == 0:
+        #    return None
 
-        df = pd.concat(cumul, sort=True)
+        #df = pd.concat(cumul, sort=True)
 
         return df
 
