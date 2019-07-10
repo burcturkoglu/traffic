@@ -533,7 +533,7 @@ class Impala(object):
         other_params += (
             "and lat<={airport_latmax} and lat>={airport_latmin} "
             "and lon<={airport_lonmax} and lon>={airport_lonmin} "
-            "and baroaltitude<=1000 "
+            #"and baroaltitude<=1000 "
         ).format(
             airport_latmax=airport.latitude + 0.1,
             airport_latmin=airport.latitude - 0.1,
