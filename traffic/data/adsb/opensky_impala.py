@@ -558,7 +558,7 @@ class Impala(object):
 
         if isinstance(airport, str):
 
-            other_params += "and (estdepartureairport = {airport} or estarrivalairport = {airport}) ".format(airport=airport)
+            other_params += "and (estdepartureairport = \"{airport}\" or estarrivalairport = \"{airport}\") ".format(airport=airport)
 
         cumul = []
         sequence = list(split_times(start, stop, date_delta))
