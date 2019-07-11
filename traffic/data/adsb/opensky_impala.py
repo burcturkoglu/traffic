@@ -68,8 +68,8 @@ class Impala(object):
 
     flight_request = (
         "select {columns} from flights_data4 {other_tables} "
-        "where hour>={before_hour} and hour<{after_hour} "
-        "and time>={before_time} and time<{after_time} "
+        "where day>={before_day} and day<{after_day} "
+        "and firstseen>={before_time} and firstseen<{after_time} "
         "{other_params}"
     )
 
@@ -289,6 +289,37 @@ class Impala(object):
             }
         )
 
+
+    @staticmethod
+    def _format_flights(df: pd.DataFrame) -> pd.DataFrame:
+
+        # restore all types
+        for column_name in [
+            "firstseen",
+            "lastseen",
+            "estdepartureairporthorizdistance",
+            "estdepartureairportvertdistance",
+            "estarrivalairporthorizdistance",
+            "estarrivalairportvertdistance",
+            "departureairportcandidatescount",
+            "arrivalairportcandidatescount",
+            "day"
+        ]:
+            df[column_name] = df[column_name].astype(int)
+
+        if "callsign" in df.columns and df.callsign.dtype == object:
+            df.callsign = df.callsign.str.strip()
+
+        df.icao24 = (
+            df.icao24.apply(int, base=16)
+                .apply(hex)
+                .str.slice(2)
+                .str.pad(6, fillchar="0")
+        )
+
+        return df
+
+
     def history(
         self,
         start: timelike,
@@ -435,6 +466,141 @@ class Impala(object):
             return None
 
         df = pd.concat(cumul, sort=True).sort_values("timestamp")
+
+        return df
+        #
+        # if count is True:
+        #     df = df.assign(count=lambda df: df["count"].astype(int))
+        #
+        # if return_flight:
+        #     return Flight(df)
+        #
+        # return Traffic(df)
+
+
+    def flights_data(
+        self,
+        start: timelike,
+        stop: Optional[timelike] = None,
+        *args,  # more reasonable to be explicit about arguments
+        date_delta: timedelta = timedelta(days=1),
+        callsign: Union[None, str, Iterable[str]] = None,
+        icao24: Union[None, str, Iterable[str]] = None,
+        serials: Union[None, str, Iterable[str]] = None,
+        airport: Union[Airport, str],
+        bounds: Union[
+            BaseGeometry, Tuple[float, float, float, float], None
+        ] = None,
+        cached: bool = True,
+        count: bool = False,
+        other_tables: str = "",
+        other_params: str = "",
+        progressbar: Callable[[Iterable], Iterable] = iter,
+    ) -> Optional[Union[Traffic, Flight]]:
+
+        """Get Traffic from the OpenSky Impala shell.
+
+        The method builds appropriate SQL requests, caches results and formats
+        data into a proper pandas DataFrame. Requests are split by hour (by
+        default) in case the connection fails.
+
+        Args:
+            start: a string, epoch or datetime
+            stop (optional): a string, epoch or datetime, by default, one day
+            after start
+            date_delta (optional): how to split the requests (default: one day)
+            callsign (optional): a string or a list of strings (default: empty)
+            icao24 (optional): a string or a list of strings identifying the
+            transponder code of the aircraft (default: empty)
+            serials (optional): a string or a list of strings identifying the
+            sensors receiving the data. (default: empty)
+            bounds (optional): a shape (requires the bounds attribute) or a
+            tuple of floats (west, south, east, north) to put a geographical
+            limit on the request. (default: empty)
+            cached (boolean): whether to look first whether the request has been
+            cached (default: True)
+            count (boolean): add a column stating how many sensors received each
+            line (default: False)
+
+        Returns:
+            a Traffic structure wrapping the dataframe
+
+        """
+
+        return_flight = False
+        start = to_datetime(start)
+        if stop is not None:
+            stop = to_datetime(stop)
+        else:
+            stop = start + timedelta(days=1)
+
+        if progressbar == iter and stop - start > timedelta(days=1):
+            progressbar = tqdm
+
+        if isinstance(serials, Iterable):
+            other_tables += ", state_vectors_data4.serials s "
+            other_params += "and s.ITEM in {} ".format(tuple(serials))
+
+        if isinstance(icao24, str):
+            other_params += "and icao24='{}' ".format(icao24)
+
+        elif isinstance(icao24, Iterable):
+            icao24 = ",".join("'{}'".format(c) for c in icao24)
+            other_params += "and icao24 in ({}) ".format(icao24)
+
+        if isinstance(callsign, str):
+            other_params += "and callsign='{:<8s}' ".format(callsign)
+            return_flight = True
+
+        elif isinstance(callsign, Iterable):
+            callsign = ",".join("'{:<8s}'".format(c) for c in callsign)
+            other_params += "and callsign in ({}) ".format(callsign)
+
+        if isinstance(airport, str):
+
+            other_params += "and (estdepartureairport = {airport} or estarrivalairport = {airport}) ".format(airport=airport)
+
+        cumul = []
+        sequence = list(split_times(start, stop, date_delta))
+        columns = ", ".join(self._flights_columns)
+        parse_columns = ", ".join(self._flights_columns)
+
+        if count is True:
+            other_params += "group by " + columns
+            columns = "count(*) as count, " + columns
+            parse_columns = "count, " + parse_columns
+            other_tables += ", state_vectors_data4.serials s"
+
+        for bt, at, bh, ah in progressbar(sequence):
+
+            logging.info(
+                f"Sending request between time {bt} and {at} "
+                f"and hour {bh} and {ah}"
+            )
+
+            request = self.basic_request.format(
+                columns=columns,
+                before_time=bt.timestamp(),
+                after_time=at.timestamp(),
+                before_day=bh.timestamp(),
+                after_day=ah.timestamp(),
+                other_tables=other_tables,
+                other_params=other_params,
+            )
+
+            df = self._impala(request, columns=parse_columns, cached=cached)
+
+            if df is None:
+                continue
+
+            df = self._format_flights(df)
+            #df = self._format_dataframe(df)
+            cumul.append(df)
+
+        if len(cumul) == 0:
+            return None
+
+        df = pd.concat(cumul, sort=True).sort_values("firstseen")
 
         return df
         #
