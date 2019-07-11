@@ -578,7 +578,7 @@ class Impala(object):
                 f"and hour {bh} and {ah}"
             )
 
-            request = self.basic_request.format(
+            request = self.flight_request.format(
                 columns=columns,
                 before_time=bt.timestamp(),
                 after_time=at.timestamp(),
