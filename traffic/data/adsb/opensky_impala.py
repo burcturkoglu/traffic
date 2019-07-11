@@ -593,7 +593,7 @@ class Impala(object):
             if df is None:
                 continue
 
-            df = self._format_flights(df)
+            #df = self._format_flights(df)
             #df = self._format_dataframe(df)
             cumul.append(df)
 
