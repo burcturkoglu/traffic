@@ -185,7 +185,7 @@ class Impala(object):
                 ).dt.tz_localize("utc")
             )
 
-        return df.sort_values("timestamp")
+        return df #.sort_values("timestamp")
 
     def _connect(self) -> None:
         if self.username == "" or self.password == "":
@@ -335,6 +335,7 @@ class Impala(object):
         ] = None,
         cached: bool = True,
         count: bool = False,
+        sort: bool = False,
         other_tables: str = "",
         other_params: str = "",
         progressbar: Callable[[Iterable], Iterable] = iter,
@@ -436,6 +437,9 @@ class Impala(object):
             parse_columns = "count, " + parse_columns
             other_tables += ", state_vectors_data4.serials s"
 
+        if sort is True:
+            other_params += "order by time, icao24 asc"
+
         for bt, at, bh, ah in progressbar(sequence):
 
             logging.info(
@@ -465,7 +469,7 @@ class Impala(object):
         if len(cumul) == 0:
             return None
 
-        df = pd.concat(cumul, sort=True).sort_values("timestamp")
+        df = pd.concat(cumul, sort=True) #.sort_values("timestamp")
 
         return df
         #
